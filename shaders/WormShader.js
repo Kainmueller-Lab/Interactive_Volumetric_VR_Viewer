@@ -1,0 +1,271 @@
+import {
+	Vector2,
+	Vector3
+} from 'three';
+
+/**
+ * Shaders to render 3D volumes using raycasting.
+ * The applied techniques are based on similar implementations in the Visvis and Vispy projects.
+ * This is not the only approach, therefore it's marked 1.
+ */
+
+const WormShader = {
+
+	uniforms: {
+		'u_size': { value: new Vector3( 1, 1, 1 ) },
+		'u_renderstyle': { value: 0 },
+		'u_renderthreshold': { value: 0.5 },
+		'u_clim': { value: new Vector2( 1, 1 ) },
+		'u_opacity': { value: 1.0 },
+		'u_cuttingthreshold': { value: 0.0 },
+		'u_data': { value: null },
+		'u_cmdata': { value: null }
+	},
+
+	vertexShader: /* glsl */`
+
+		varying vec4 v_nearpos;
+		varying vec4 v_farpos;
+		varying vec3 v_position;
+		varying vec4 v_cam_origin;
+
+		void main() {
+				// Prepare transforms to map to "camera view". See also:
+				// https://threejs.org/docs/#api/renderers/webgl/WebGLProgram
+				mat4 viewtransformf = modelViewMatrix;
+				mat4 viewtransformi = inverse(modelViewMatrix);
+
+				// Project local vertex coordinate to camera position. Then do a step
+				// backward (in cam coords) to the near clipping plane, and project back. Do
+				// the same for the far clipping plane. This gives us all the information we
+				// need to calculate the ray and truncate it to the viewing cone.
+				vec4 position4 = vec4(position, 1.0);
+				vec4 pos_in_cam = viewtransformf * position4;
+
+				v_cam_origin = viewtransformi * vec4(0.0, 0.0, 0.0, 1.0);
+
+				// Intersection of ray and near clipping plane (z = -1 in clip coords)
+				pos_in_cam.z = -pos_in_cam.w;
+				v_nearpos = viewtransformi * pos_in_cam;
+
+				// Intersection of ray and far clipping plane (z = +1 in clip coords)
+				pos_in_cam.z = pos_in_cam.w;
+				v_farpos = viewtransformi * pos_in_cam;
+
+				// Set varyings and output pos
+				v_position = position;
+				gl_Position = projectionMatrix * viewMatrix * modelMatrix * position4;
+		}`,
+
+	fragmentShader: /* glsl */`
+
+				precision highp float;
+				precision mediump sampler3D;
+
+				uniform vec3 u_size;
+				uniform int u_renderstyle;
+				uniform float u_renderthreshold;
+				uniform vec2 u_clim;
+				uniform float u_opacity;
+				uniform float u_cuttingthreshold;
+
+				uniform sampler3D u_data;
+				uniform sampler2D u_cmdata;
+
+				varying vec3 v_position;
+				varying vec4 v_nearpos;
+				varying vec4 v_farpos;
+				varying vec4 v_cam_origin;
+
+				// The maximum distance through our rendering volume is sqrt(3).
+				const int MAX_STEPS = 887;	// 887 for 512^3, 1774 for 1024^3
+				const int REFINEMENT_STEPS = 4;
+				const float relative_step_size = 1.0;
+				const vec4 ambient_color = vec4(0.2, 0.4, 0.2, 1.0);
+				const vec4 diffuse_color = vec4(0.8, 0.2, 0.2, 1.0);
+				const vec4 specular_color = vec4(1.0, 1.0, 1.0, 1.0);
+				const float shininess = 600.0;
+
+				void cast_mip(vec3 start_loc, vec3 step, int nsteps, vec3 view_ray);
+				void cast_iso(vec3 start_loc, vec3 step, int nsteps, vec3 view_ray);
+
+				float sample1(vec3 texcoords);
+				vec4 apply_colormap(float val);
+				vec4 add_lighting(float val, vec3 loc, vec3 step, vec3 view_ray);
+
+
+				void main() {
+						// Normalize clipping plane info
+						vec3 farpos = v_farpos.xyz / v_farpos.w;
+						vec3 nearpos = v_nearpos.xyz / v_nearpos.w;
+
+						// Calculate unit vector pointing in the view direction through this fragment.
+						vec3 view_ray = normalize(nearpos.xyz - farpos.xyz);
+						view_ray = -normalize(v_cam_origin.xyz - v_position);
+
+						// Compute the (negative) distance to the front surface or near clipping plane.
+						// v_position is the back face of the cuboid, so the initial distance calculated in the dot
+						// product below is the distance from near clip plane to the back of the cuboid
+						float distance = dot(nearpos - v_position, view_ray);
+						distance = max(distance, min((-0.5 - v_position.x) / view_ray.x,
+																				(u_size.x - 0.5 - v_position.x) / view_ray.x));
+						distance = max(distance, min((-0.5 - v_position.y) / view_ray.y,
+																				(u_size.y - 0.5 - v_position.y) / view_ray.y));
+						distance = max(distance, min((-0.5 - v_position.z) / view_ray.z,
+																				(u_size.z - 0.5 - v_position.z) / view_ray.z));
+
+						// Now we have the starting position on the front surface
+						vec3 front = v_position + view_ray * distance;
+
+						// Decide how many steps to take
+						int nsteps = int(-distance / relative_step_size + 0.5);
+						if ( nsteps < 1 )
+								discard;
+
+						// Get starting location and step vector in texture coordinates
+						vec3 step = ((v_position - front) / u_size) / float(nsteps);
+						vec3 start_loc = front / u_size;
+
+						// For testing: show the number of steps. This helps to establish
+						// whether the rays are correctly oriented
+						// gl_FragColor = vec4(0.0, float(nsteps) / 1.0 / u_size.x, 1.0, 1.0);
+						// gl_FragColor = vec4(farpos/u_size.x, 1.0);
+						// gl_FragColor = vec4(-view_ray, 1.0);
+						
+						// gl_FragColor = vec4(v_position / u_size.x, 1.0);
+						// gl_FragColor = vec4(v_cam_origin.x, v_cam_origin.y, 0.0, 1.0);
+						// return;
+
+						// Cast the ray for isosurface rendering
+						cast_iso(start_loc, step, nsteps, view_ray);
+						gl_FragColor.a *= u_opacity;
+
+						if (gl_FragColor.a < 0.05)
+								discard;
+				}
+
+
+				float sample1(vec3 texcoords) {
+					float t = texture(u_data, texcoords).r;
+
+					// Normalize mode flags
+					float m0 = float(u_renderstyle == 0);
+					float m1 = float(u_renderstyle == 1);
+					float m2 = float(u_renderstyle == 2);
+
+					// Mode 0: intensity normalization
+					float val0 = t / 255.0;
+
+					// Mode 1: binary threshold → 0.5 if nonzero
+					float val1 = mix(0.0, 0.5, step(1e-6, abs(t)));
+
+					// Mode 2: scaled absolute value
+					float val2 = abs(t) / 700.0;
+
+					// Combine all using linear selection (no branching)
+					return val0 * m0 + val1 * m1 + val2 * m2;
+				}
+
+
+
+				vec4 apply_colormap(float val) {
+						val = (val - u_clim[0]) / (u_clim[1] - u_clim[0]);
+						return texture2D(u_cmdata, vec2(val, 0.5));
+				}
+
+
+				void cast_iso(vec3 start_loc, vec3 step, int nsteps, vec3 view_ray) {
+
+						gl_FragColor = vec4(0.0);	// init transparent
+						vec4 color3 = vec4(0.0);	// final color
+						vec3 dstep = 1.5 / u_size;	// step to sample derivative
+						vec3 loc = start_loc;
+
+						float low_threshold = u_renderthreshold - 0.02 * (u_clim[1] - u_clim[0]);
+						vec3 plane_point = vec3(1.0 - u_cuttingthreshold, 1.0, 1.0);  // Point on the cutting plane
+						vec3 plane_normal = normalize(vec3(-1.0, 0.0, 0.0));  // Normal vector of the cutting plane (should be normalized)
+
+
+						// Enter the raycasting loop. In WebGL 1 the loop index cannot be compared with
+						// non-constant expression. So we use a hard-coded max, and an additional condition
+						// inside the loop.
+						for (int iter=0; iter<MAX_STEPS; iter++) {
+								if (iter >= nsteps)
+										break;
+
+								float plane_dist = dot(loc - plane_point, plane_normal);
+								if (plane_dist < 0.0) {
+									loc += step;
+									continue;  // skip samples on the "cut" side
+								}
+
+								// Sample from the 3D texture
+								float val = sample1(loc);
+
+								if (val > low_threshold) {
+										// Take the last interval in smaller steps
+										vec3 iloc = loc - 0.5 * step;
+										vec3 istep = step / float(REFINEMENT_STEPS);
+										for (int i=0; i<REFINEMENT_STEPS; i++) {
+												val = sample1(iloc);
+												if (val > u_renderthreshold) {
+														gl_FragColor = add_lighting(val, iloc, dstep, view_ray);
+														return;
+												}
+												iloc += istep;
+										}
+								}
+
+								// Advance location deeper into the volume
+								loc += step;
+						}
+				}
+
+
+				vec4 add_lighting(float val, vec3 loc, vec3 step, vec3 view_ray) {
+					// View direction
+					vec3 V = normalize(view_ray);
+
+					// Central differences with 6 samples (same stencil as before)
+					vec3 gx = vec3(step.x, 0.0, 0.0);
+					vec3 gy = vec3(0.0, step.y, 0.0);
+					vec3 gz = vec3(0.0, 0.0, step.z);
+
+					float sx1 = sample1(loc - gx);
+					float sx2 = sample1(loc + gx);
+					float sy1 = sample1(loc - gy);
+					float sy2 = sample1(loc + gy);
+					float sz1 = sample1(loc - gz);
+					float sz2 = sample1(loc + gz);
+
+					// Gradient
+					vec3 N = vec3(sx1 - sx2, sy1 - sy2, sz1 - sz2);
+					N = normalize(N);
+
+					// Preserve your intensity modulation exactly:
+					// val = max( max(val, max(sx1,sx2)), max(max(sy1,sy2), max(sz1,sz2)) )
+					float vmax_xy = max(max(sx1, sx2), max(sy1, sy2));
+					float vmax_xyz = max(vmax_xy, max(sz1, sz2));
+					val = max(val, vmax_xyz);
+
+					// Flip normal so it points toward viewer (correct condition)
+					if (dot(N, V) < 0.0) N = -N;
+
+					// Single light equal to your loop i<1
+					vec3 L = normalize(view_ray);
+					float lambertTerm  = max(dot(N, L), 0.0);
+					vec3 H             = normalize(L + V);
+					float specularTerm = pow(max(dot(H, N), 0.0), shininess);
+
+					// Compose with same globals
+					vec4 color = apply_colormap(val);
+					vec4 final_color =
+						color * (ambient_color + diffuse_color * lambertTerm) +
+						specular_color * specularTerm;
+
+					final_color.a = color.a;
+					return final_color;
+				}`
+};
+
+export { WormShader };
