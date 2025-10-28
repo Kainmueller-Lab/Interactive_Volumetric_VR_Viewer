@@ -9,100 +9,45 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { VolumeShader } from './shaders/VolumeShader.js';
 
 let scene, camera, renderer;
-let rotatingGroups = {};
-let centers = {};
+let rotatingGroup;
+let volumeCenter;
 let thresholdUniformRefs = {};
 let volumeMaterials = {};
-let wormTransformsGuiMesh, wormDataGuiMesh, wormTransparencyGuiMesh;
-let wormTitleMesh;
+let organTransformsGuiMesh, organDataGuiMesh;
 let controller1, controller2;
 let group; // GUI group
 
 // PARAMETERS
-const ROTATIONSPEED = 0.0;
-const FOV = 90;
-const DISTANCE = 170;
+let VOLUME_PATH;
+VOLUME_PATH = './data/examples/worm.nrrd';
+VOLUME_PATH = './data/examples/stent.nrrd';
+// VOLUME_PATH = './data/examples/heart_256.nrrd';
+// VOLUME_PATH = './data/examples/eye_512.nrrd';
+
+const ROTATIONSPEED = 0.00;
+const FOV = 80;
 const HIDEGUI = false;
-const START_worm = 'raw';
-const MAX_INTERWORMDISTANCE = 60;
+const SCALE_COEFF = 0.5;
 
 const vrPosition = new THREE.Vector3(0, 1.7, 0);
-
-const volumes = ['raw', 'gt_mask', 'stardist_mask'];
+const vrDirection = new THREE.Vector3(0, 0, -1);
 
 // GUI + data config
-const isoThresholds = {
-  raw: 0.09,
-  gt_mask: 0.00,
-  stardist_mask: 0.00,
-};
+const DISTANCE = 170;
+const isoThreshold = 0.;
+const rotation = new THREE.Euler(90 * Math.PI / 180, 0 * Math.PI / 180, 0);
 
-const colormaps = {
-  raw: 3,
-  gt_mask: 1,
-  stardist_mask: 5,
-};
 
-// NOTE: 0 = raw, 1 = fg_bg, 2 = instances
-// default render styles (masks use fg/bg by default)
-const renderstyles = {
-  raw: 0,
-  gt_mask: 1,
-  stardist_mask: 1,
-};
-
-const scales = {
-  raw: 1, // NOTE: Currently raw is too large in memory but masks are too smal for nearest filtering. hence this difference in scaling.
-  gt_mask: 0.5,
-  stardist_mask: 0.5,
-};
-
-const rotations = {
-  raw: new THREE.Euler(90 * Math.PI / 180, 90 * Math.PI / 180, 0 * Math.PI / 180),
-  gt_mask: new THREE.Euler(90 * Math.PI / 180, 90 * Math.PI / 180, 0 * Math.PI / 180),
-  stardist_mask: new THREE.Euler(90 * Math.PI / 180, 90 * Math.PI / 180, 0 * Math.PI / 180),
-};
-
-const wormParams = {};
-for (let worm of volumes) {
-  wormParams[worm] = {
-    threshold: isoThresholds[worm],
-    renderstyle: renderstyles[worm],
-    colormap: colormaps[worm],
-    opacity: 1,
-  };
-}
-
-const transformParams = {
+const organParams = {
+  threshold: isoThreshold,
   scale: 1,
   rotLR: 0,
   rotUD: 0,
-  interwormDistance: 1,
-  leftrightOffset: 0,
-  cuttingThreshold: 0,
-  showInstanceSeg: 0, // toggle FG-BG <> instances for mask volumes
+  colormap: 1,
+  useIsoSurface: 1,
 }
 
-const filePaths = {
-  raw: '../../data/worms/raw_0_50.nrrd',
-  gt_mask: '../../data/worms/mask.nrrd',
-  stardist_mask: '../../data/worms/stardist_mask.nrrd',
-};
-// NOTE: In case original resolution is desired, use:
-// const filePaths = {
-//   raw: '../../data/worms/raw.nrrd',
-//   gt_mask: '../../data/worms/mask.nrrd',
-//   stardist_mask: '../../data/worms/stardist_mask.nrrd',
-// };
-
-const wormTitles = {
-  raw: 'Raw',
-  gt_mask: 'GT Mask',
-  stardist_mask: 'StarDist Mask',
-};
-
 const cmtextures = {
-  5: new THREE.TextureLoader().load('textures/cm_random_hue.png'),
   4: new THREE.TextureLoader().load('textures/cm_viridis.png'),
   3: new THREE.TextureLoader().load('textures/cm_plasma.png'),
   2: new THREE.TextureLoader().load('textures/cm_inferno.png'),
@@ -119,22 +64,20 @@ animate();
 function init() {
   // Setup scene
   scene = new THREE.Scene();
-  initializeCenters(DISTANCE);
+  initializeCenter(DISTANCE);
 
   // Setup camera
   camera = new THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, 0.1, 5000);
   camera.position.copy(vrPosition);
-  camera.lookAt(centers[START_worm]);
+  camera.lookAt(volumeCenter);
 
   // Setup light & environment
   setupEnvironmentLighting();
 
-  // Load volumetric worm data
-  for (let worm of volumes) {
-    rotatingGroups[worm] = new THREE.Group(); // Add rotating group to enable transforms
-    scene.add(rotatingGroups[worm]);
-    addwormVolume(centers[worm], worm, rotatingGroups[worm]);
-  }
+  // Load volumetric data
+  rotatingGroup = new THREE.Group(); // Add rotating group to enable transforms
+  scene.add(rotatingGroup);
+  addVolume(VOLUME_PATH, volumeCenter, rotatingGroup);
 
   // Add auxiliary scene objects
   setupSceneObjects();
@@ -144,12 +87,11 @@ function init() {
   setupControllers();
 
   // Add GUI
-  //setupwormTitles();
-  setupwormGUIs();
+  setupOrganGUIs();
 
   // Add credits
   setupCredits(renderer);
-
+  
   // On window resize
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -160,15 +102,13 @@ function init() {
 
 function animate() {
   renderer.setAnimationLoop(() => {
-    for (let worm of volumes) {
-      // Rotate the volumes
-      rotatingGroups[worm].rotation.x += ROTATIONSPEED;
+    // Rotate the volumes
+    rotatingGroup.rotation.x += ROTATIONSPEED;
 
-      // Update the GUIs
-      if (wormTransformsGuiMesh) wormTransformsGuiMesh.material.map.update();
-      if (wormDataGuiMesh) wormDataGuiMesh.material.map.update();
-      if (wormTransparencyGuiMesh) wormTransparencyGuiMesh.material.map.update();
-    }
+    // Update the GUIs
+    if (organTransformsGuiMesh) organTransformsGuiMesh.material.map.update();
+    if (organDataGuiMesh) organDataGuiMesh.material.map.update();
+
     renderer.render(scene, camera);
   });
 }
@@ -178,34 +118,25 @@ function animate() {
 // Volume Loading & Material Setup
 // =======================================
 
-function initializeCenters(distance) {
-  const rawCenter = new THREE.Vector3(0, 1.7, -distance);
-  centers['raw'] = rawCenter;
-  const gt_maskCenter = new THREE.Vector3(0, 1.7, -distance);
-  centers['gt_mask'] = gt_maskCenter;
-  const stardist_maskCenter = new THREE.Vector3(0, 1.7, -distance);
-  centers['stardist_mask'] = stardist_maskCenter;
+function initializeCenter(distance) {
+  const center = new THREE.Vector3(0, 1.7, 0);
+  center.z -= distance;
+  volumeCenter = center;
 }
 
-function addwormVolume(center, worm, rotateGroup) {
-  const nrrdPath = filePaths[worm];
-  const threshold = isoThresholds[worm];
-  wormParams[worm].threshold = threshold;
+function addVolume(volumePath, center, rotateGroup) {
+  const threshold = isoThreshold;
+  organParams.threshold = threshold;
   const [cx, cy, cz] = center;
 
-  new NRRDLoader().load(nrrdPath, (volume) => {
+  new NRRDLoader().load(volumePath, (volume) => {
     const sx = volume.xLength;
     const sy = volume.yLength;
     const sz = volume.zLength;
     const texture = new THREE.Data3DTexture(volume.data, sx, sy, sz);
     texture.format = THREE.RedFormat;
     texture.type = THREE.FloatType;
-
-    let filter_mode = THREE.LinearFilter;
-    if (wormParams[worm].renderstyle != 0) {
-      filter_mode = THREE.NearestFilter;
-    }
-    texture.minFilter = texture.magFilter = filter_mode;
+    texture.minFilter = texture.magFilter = THREE.LinearFilter;
     texture.unpackAlignment = 1;
     texture.needsUpdate = true;
 
@@ -214,24 +145,21 @@ function addwormVolume(center, worm, rotateGroup) {
     uniforms['u_data'].value = texture;
     uniforms['u_size'].value.set(sx, sy, sz);
     uniforms['u_clim'].value.set(0, 1);
-    uniforms['u_opacity'].value = wormParams[worm].opacity;
-    uniforms['u_renderstyle'].value = wormParams[worm].renderstyle;
-    uniforms['u_renderthreshold'].value = wormParams[worm].threshold;
-    uniforms['u_cmdata'].value = cmtextures[wormParams[worm].colormap];
-    uniforms['u_cuttingthreshold'].value = wormParams[worm].cuttingThreshold;
+    uniforms['u_renderstyle'].value = organParams.useIsoSurface;
+    uniforms['u_renderthreshold'].value = organParams.threshold;
+    uniforms['u_cmdata'].value = cmtextures[organParams.colormap];
 
-    thresholdUniformRefs[worm] = uniforms['u_renderthreshold'];
+    thresholdUniformRefs = uniforms['u_renderthreshold'];
 
     const geometry = new THREE.BoxGeometry(sx, sy, sz);
     geometry.translate(sx / 2, sy / 2, sz / 2);
-    volumeMaterials[worm] = new THREE.ShaderMaterial({
+    volumeMaterials = new THREE.ShaderMaterial({
       uniforms,
       vertexShader: shader.vertexShader,
       fragmentShader: shader.fragmentShader,
-      side: THREE.BackSide,
-      transparent: true,
+      side: THREE.BackSide
     });
-    const mesh = new THREE.Mesh(geometry, volumeMaterials[worm]);
+    const mesh = new THREE.Mesh(geometry, volumeMaterials);
     mesh.position.set(-sx / 2, -sy / 2, -sz / 2);
 
     // === Create group hierarchy ===
@@ -247,21 +175,12 @@ function addwormVolume(center, worm, rotateGroup) {
     yawGroup.position.set(cx, cy, cz);
     yawGroup.lookAt(vrPosition); // Make it face the camera
 
-    // === Apply fixed worm-specific rotation to placingGroup ===
-    placingGroup.rotation.copy(rotations[worm]);
+    // === Apply fixed organ-specific rotation to placingGroup ===
+    placingGroup.rotation.copy(rotation);
 
     // Scale
-    const volumescale = scales[worm] * transformParams.scale;
-    rotatingGroups[worm].scale.set(volumescale, volumescale, volumescale);
-
-    // Offset
-    // TODO: Fix to only set position per worm once using an offset var.
-    rotatingGroups['raw'].position.y = 1.7 - transformParams.interwormDistance*MAX_INTERWORMDISTANCE;
-    rotatingGroups['gt_mask'].position.y = 1.7;
-    rotatingGroups['stardist_mask'].position.y = 1.7 + transformParams.interwormDistance*MAX_INTERWORMDISTANCE;
-    for (let worm of volumes) {
-      rotatingGroups[worm].position.x += transformParams.leftrightOffset;
-    }
+    const organScale = organParams.scale * SCALE_COEFF;
+    rotatingGroup.scale.set(organScale, organScale, organScale);
   });
 }
 
@@ -290,7 +209,7 @@ function addCylindricalFloor(scene, radius, height, radialSegments, gridLines) {
 
   // 2. Grid circle on top face (white edges)
   const num_circles = 5;
-  for (let i = 1; i < num_circles + 1; i++) {
+  for (let i = 1; i < num_circles+1; i++) {
     const circleGeometry = new THREE.CircleGeometry(i * radius / num_circles, radialSegments);
     circleGeometry.rotateX(-Math.PI / 2); // face up
     const circleEdges = new THREE.EdgesGeometry(circleGeometry);
@@ -325,34 +244,17 @@ function setupEnvironmentLighting() {
   const dirLight = new THREE.DirectionalLight(0xffffff, 1);
   dirLight.position.set(0, 1, 0);
   scene.add(dirLight);
-
-  // Skybox
-  // scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.0));
-  // const skybox = new THREE.CubeTextureLoader()
-  // .setPath('textures/skybox/')
-  // .load([
-  //   'space_rt.png', // +X (right)
-  //   'space_lf.png', // -X (left)
-  //   'space_up.png', // +Y (up)
-  //   'space_dn.png', // -Y (down)
-  //   'space_ft.png', // +Z (front)
-  //   'space_bk.png'  // -Z (back)
-  // ]);
-  // scene.background = skybox;     // ← makes it visible as background
-  // scene.environment = skybox;   // ← enables reflections
-
-
 }
 
 // =======================================
 // GUI
 // =======================================
 
-function setupwormGUIs() {
-  const offset = 1.5;
-  const guiDistance = 2;
+function setupOrganGUIs() {
+  const offset = 0.75;
+  const guiDistance = 3.5;
   const guiScale = 6.0;
-  const guiHeight = 0.5;
+  const guiHeight = -0.5;
   const guiWidth = 250;
 
   if (!group) {
@@ -364,134 +266,75 @@ function setupwormGUIs() {
     if (controller1) group.listenToXRControllerEvents(controller1);
     if (controller2) group.listenToXRControllerEvents(controller2);
   }
-
-
-  // Data panel
-  const dataGui = new GUI({ width: guiWidth });
-  dataGui.title(`Data paarameters`);
-  // dataGui.add(wormParams['raw'], 'useIsoSurface', 0, 1, 1)
-  //   .name('MIP <> Isosurface')
-  //   .onChange((v) => {
-  //     if (volumeMaterials[worm] && volumeMaterials[worm].uniforms?.u_renderstyle) {
-  //       volumeMaterials[worm].uniforms['u_renderstyle'].value = v ? 1 : 0;
-  //     }
-  //   });
-  dataGui.add(transformParams, 'cuttingThreshold', 0, 1, 0.01)
-    .name('Cutting Plane')
-    .onChange((value) => {
-      for (let worm of volumes) {
-        if (volumeMaterials[worm] && volumeMaterials[worm].uniforms?.u_cuttingthreshold) {
-          volumeMaterials[worm].uniforms['u_cuttingthreshold'].value = value;
-        }
-      }
-    });
-  dataGui.add(wormParams['raw'], 'threshold', 0, 0.6, 0.01)
-    .name('Isosurf. Threshold')
-    .onChange((value) => {
-      if (thresholdUniformRefs['raw']) thresholdUniformRefs['raw'].value = value;
-    });
-  dataGui.add(transformParams, 'interwormDistance', 0, 1, 0.01).name('Interworm Distance').onChange((v) => {
-    rotatingGroups['raw'].position.y = 1.7 - v*MAX_INTERWORMDISTANCE;
-    rotatingGroups['gt_mask'].position.y = 1.7;
-    rotatingGroups['stardist_mask'].position.y = 1.7 + v*MAX_INTERWORMDISTANCE;
-  });
-  dataGui.add(transformParams, 'showInstanceSeg', 0, 1, 1).name('FG-BF <> Instances').onChange((v) => {
-    // update both mask materials when toggled
-    if (volumeMaterials['gt_mask'] && volumeMaterials['gt_mask'].uniforms?.u_renderstyle !== undefined) {
-      volumeMaterials['gt_mask'].uniforms['u_renderstyle'].value = v ? 2 : 1;
-      volumeMaterials['gt_mask'].uniforms['u_cmdata'].value = v ? cmtextures[5] : cmtextures[1];
-    }
-    if (volumeMaterials['stardist_mask'] && volumeMaterials['stardist_mask'].uniforms?.u_renderstyle !== undefined) {
-      volumeMaterials['stardist_mask'].uniforms['u_renderstyle'].value = v ? 2 : 1;
-    }
-  });
-  dataGui.domElement.style.visibility = 'hidden';
-
+  
+  // const group = new InteractiveGroup();
+  // group.listenToPointerEvents(renderer, camera);
+  // scene.add(group);
 
   // Transforms panel
   const transformsGui = new GUI({ width: guiWidth });
-  transformsGui.title(`Transforms`);
-  transformsGui.add(transformParams, 'scale', 0.5, 2, 0.1).name('Scale').onChange((v) => {
-    for (let worm of volumes) {
-      rotatingGroups[worm].scale.set(v * scales[worm], v * scales[worm], v * scales[worm]);
-    }
+  transformsGui.title(`Spatial Transforms`);
+  transformsGui.add(organParams, 'scale', 1, 3, 0.1).name('Scale').onChange((v) => {
+    rotatingGroup.scale.set(v*SCALE_COEFF, v*SCALE_COEFF, v*SCALE_COEFF);
   });
-  // transformsGui.add(transformParams, 'rotLR', -180, 180, 1).name('Rotate Left/Right').onChange((v) => {
-  //   rotatingGroups['raw'].rotation.y = v * Math.PI / 180;
-  //   rotatingGroups['gt_mask'].rotation.y = v * Math.PI / 180;
-  //   rotatingGroups['stardist_mask'].rotation.y = v * Math.PI / 180;
-  // });
-  transformsGui.add(transformParams, 'rotUD', -180, 180, 1).name('Rotate Up/Down').onChange((v) => {
-    rotatingGroups['raw'].rotation.x = v * Math.PI / 180;
-    rotatingGroups['gt_mask'].rotation.x = v * Math.PI / 180;
-    rotatingGroups['stardist_mask'].rotation.x = v * Math.PI / 180;
+  transformsGui.add(organParams, 'rotLR', -180, 180, 1).name('Rotate Left/Right').onChange((v) => {
+    rotatingGroup.rotation.y = v * Math.PI / 180;
   });
-  transformsGui.add(transformParams, 'leftrightOffset', -400, 400, 1).name('Left/Right Offset').onChange((v) => {
-    for (let worm of volumes) {
-      rotatingGroups[worm].position.x = v;
-    }
+  transformsGui.add(organParams, 'rotUD', -180, 180, 1).name('Rotate Up/Down').onChange((v) => {
+    rotatingGroup.rotation.x = v * Math.PI / 180;
   });
   transformsGui.domElement.style.visibility = 'hidden';
-
   
-  // Transparency panel
-  const transparencyGui = new GUI({ width: guiWidth });
-  transparencyGui.title(`Volume Transparency`);
-  for (let worm of volumes) {
-    transparencyGui.add(wormParams[worm], 'opacity', 0, 1, 0.01)
-      .name(`${worm}`)
-      .onChange((value) => {
-        if (volumeMaterials[worm] && volumeMaterials[worm].uniforms?.u_opacity) {
-          volumeMaterials[worm].uniforms['u_opacity'].value = value;
-        }
-      });
-  }
-  transparencyGui.domElement.style.visibility = 'hidden';
-
-
-  wormTransformsGuiMesh = new HTMLMesh(transformsGui.domElement);
-  const angle = 0;
+  organTransformsGuiMesh = new HTMLMesh(transformsGui.domElement);
   const position = new THREE.Vector3(0, guiHeight, 0);
   position.z -= guiDistance;
-  wormTransformsGuiMesh.position.copy(position);
-  wormTransformsGuiMesh.lookAt(vrPosition);
+  organTransformsGuiMesh.position.copy(position);
+  organTransformsGuiMesh.lookAt(vrPosition);
   const localX = new THREE.Vector3(1, 0, 0); // local x direction
-  const wormTransformsOffset = localX.applyQuaternion(wormTransformsGuiMesh.quaternion).multiplyScalar(offset);
-  wormTransformsGuiMesh.position.add(wormTransformsOffset);
-  wormTransformsGuiMesh.scale.setScalar(guiScale);
-
+  const organTransformsOffset = localX.applyQuaternion(organTransformsGuiMesh.quaternion).multiplyScalar(offset);
+  organTransformsGuiMesh.position.add(organTransformsOffset);
+  organTransformsGuiMesh.scale.setScalar(guiScale);
   
-  wormDataGuiMesh = new HTMLMesh(dataGui.domElement);
+  // Data panel
+  const dataGui = new GUI({ width: guiWidth });
+  dataGui.title(`Volume Visualization`);
+
+  dataGui.add(organParams, 'useIsoSurface', 0, 1, 1)
+    .name('MIP <> Isosurface')
+    .onChange((v) => {
+      if (volumeMaterials && volumeMaterials.uniforms?.u_renderstyle) {
+        volumeMaterials.uniforms['u_renderstyle'].value = v ? 1 : 0;
+      }
+    });
+    dataGui.add(organParams, 'threshold', 0, 1, 0.01)
+    .name('Isosurf. Threshold')
+    .onChange((value) => {
+      if (thresholdUniformRefs) thresholdUniformRefs.value = value;
+    });
+    dataGui.add(organParams, 'colormap', 1, 4, 1).name('Colormap').onChange((v) => {
+      if (volumeMaterials && volumeMaterials.uniforms?.u_cmdata) {
+        volumeMaterials.uniforms['u_cmdata'].value = cmtextures[v];
+      }
+  });
+  dataGui.domElement.style.visibility = 'hidden';
+
+  organDataGuiMesh = new HTMLMesh(dataGui.domElement);
   const position2 = new THREE.Vector3(0, guiHeight, 0);
   position2.z -= guiDistance;
-  wormDataGuiMesh.position.copy(position2);
-  wormDataGuiMesh.lookAt(vrPosition);
+  organDataGuiMesh.position.copy(position2);
+  organDataGuiMesh.lookAt(vrPosition);
   const localX2 = new THREE.Vector3(-1, 0, 0); // local x direction
-  const wormDataOffset = localX2.applyQuaternion(wormDataGuiMesh.quaternion).multiplyScalar(0);
-  wormDataGuiMesh.position.add(wormDataOffset);
-  wormDataGuiMesh.scale.setScalar(guiScale);
-
-
-  wormTransparencyGuiMesh = new HTMLMesh(transparencyGui.domElement);
-  const position3 = new THREE.Vector3(0, guiHeight, 0);
-  position3.z -= guiDistance;
-  wormTransparencyGuiMesh.position.copy(position3);
-  wormTransparencyGuiMesh.lookAt(vrPosition);
-  const localX3 = new THREE.Vector3(-1, 0, 0); // local x direction
-  const wormTransparencyOffset = localX3.applyQuaternion(wormTransparencyGuiMesh.quaternion).multiplyScalar(offset);
-  wormTransparencyGuiMesh.position.add(wormTransparencyOffset);
-  wormTransparencyGuiMesh.scale.setScalar(guiScale);
-
+  const organDataOffset = localX2.applyQuaternion(organDataGuiMesh.quaternion).multiplyScalar(offset);
+  organDataGuiMesh.position.add(organDataOffset);
+  organDataGuiMesh.scale.setScalar(guiScale); 
 
   // Add to interactive group
-  group.add(wormDataGuiMesh);
-  group.add(wormTransformsGuiMesh);
-  group.add(wormTransparencyGuiMesh);
-
+  group.add(organTransformsGuiMesh);
+  group.add(organDataGuiMesh);
+  
   if (HIDEGUI) {
-    wormTransformsGuiMesh.visible = false;
-    wormDataGuiMesh.visible = false;
-    wormTransparencyGuiMesh.visible = false;
+    organTransformsGuiMesh.visible = false;
+    organDataGuiMesh.visible = false;
   }
 }
 
@@ -515,7 +358,7 @@ function setupXRButton() {
 
 function setupControllers() {
   const geometry = new THREE.BufferGeometry()
-    .setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -5)]);
+    .setFromPoints([ new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-5) ]);
 
   controller1 = renderer.xr.getController(0);
   controller1.add(new THREE.Line(geometry));
@@ -541,51 +384,6 @@ function setupControllers() {
   }
 }
 
-
-// =======================================
-// Text Labels
-// =======================================
-
-function createTextLabel(worm) {
-  const text = wormTitles[worm];
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 128;
-
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = 'white';
-  ctx.font = 'bold 18px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(1.5, 0.4, 1);
-  return sprite;
-}
-
-function setupwormTitle(worm) {
-  wormTitleMesh = createTextLabel(worm);
-  wormTitleMesh.position.set(0, 2.0, -1); // Adjust position as needed
-  scene.add(wormTitleMesh);
-}
-
-function setupwormTitles() {
-  const titleDistance = 0.5;
-  for (let worm of volumes) {
-    wormTitleMesh = createTextLabel(worm);
-    const angle = (volumes.indexOf(worm) / volumes.length) * Math.PI * 2;
-    const position = new THREE.Vector3(0, 1.93, 0);
-    position.x += Math.sin(angle) * titleDistance;
-    position.z -= Math.cos(angle) * titleDistance;
-    wormTitleMesh.position.copy(position);
-    wormTitleMesh.lookAt(vrPosition);
-    scene.add(wormTitleMesh);
-  }
-}
-
 // =======================================
 // Credit watermark
 // =======================================
@@ -593,7 +391,7 @@ function setupwormTitles() {
 function setupCredits(renderer) {
   const creditsDiv = document.createElement('div');
   creditsDiv.id = 'credits';
-  creditsDiv.innerHTML = 'Code by C. Karg from Kainmüller Lab <br>Data by TODO';
+  creditsDiv.innerHTML = 'Code by C. Karg from Kainmüller Lab';
   creditsDiv.style.position = 'absolute';
   creditsDiv.style.top = '10px';
   creditsDiv.style.right = '10px';
