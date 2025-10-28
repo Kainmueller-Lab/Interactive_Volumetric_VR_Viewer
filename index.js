@@ -8,14 +8,6 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 import { VolumeShader } from './shaders/VolumeShader.js';
 
-let scene, camera, renderer;
-let rotatingGroup;
-let volumeCenter;
-let thresholdUniformRefs = {};
-let volumeMaterials = {};
-let organTransformsGuiMesh, organDataGuiMesh;
-let controller1, controller2;
-let group; // GUI group
 
 // PARAMETERS
 let VOLUME_PATH;
@@ -30,7 +22,6 @@ const HIDEGUI = false;
 const SCALE_COEFF = 0.5;
 
 const vrPosition = new THREE.Vector3(0, 1.7, 0);
-const vrDirection = new THREE.Vector3(0, 0, -1);
 
 // GUI + data config
 const DISTANCE = 170;
@@ -38,7 +29,14 @@ const isoThreshold = 0.;
 const rotation = new THREE.Euler(90 * Math.PI / 180, 0 * Math.PI / 180, 0);
 
 
-const organParams = {
+let scene, camera, renderer;
+let rotatingGroup, group;
+let volumeCenter, volumeMaterial;
+let TransformsGuiMesh, DataGuiMesh;
+let controller1, controller2;
+
+
+const params = {
   threshold: isoThreshold,
   scale: 1,
   rotLR: 0,
@@ -87,7 +85,7 @@ function init() {
   setupControllers();
 
   // Add GUI
-  setupOrganGUIs();
+  setupGUIs();
 
   // Add credits
   setupCredits(renderer);
@@ -106,8 +104,10 @@ function animate() {
     rotatingGroup.rotation.x += ROTATIONSPEED;
 
     // Update the GUIs
-    if (organTransformsGuiMesh) organTransformsGuiMesh.material.map.update();
-    if (organDataGuiMesh) organDataGuiMesh.material.map.update();
+    if (TransformsGuiMesh) TransformsGuiMesh.material.map.update();
+    if (
+   DataGuiMesh) 
+   DataGuiMesh.material.map.update();
 
     renderer.render(scene, camera);
   });
@@ -126,7 +126,7 @@ function initializeCenter(distance) {
 
 function addVolume(volumePath, center, rotateGroup) {
   const threshold = isoThreshold;
-  organParams.threshold = threshold;
+  params.threshold = threshold;
   const [cx, cy, cz] = center;
 
   new NRRDLoader().load(volumePath, (volume) => {
@@ -145,21 +145,19 @@ function addVolume(volumePath, center, rotateGroup) {
     uniforms['u_data'].value = texture;
     uniforms['u_size'].value.set(sx, sy, sz);
     uniforms['u_clim'].value.set(0, 1);
-    uniforms['u_renderstyle'].value = organParams.useIsoSurface;
-    uniforms['u_renderthreshold'].value = organParams.threshold;
-    uniforms['u_cmdata'].value = cmtextures[organParams.colormap];
-
-    thresholdUniformRefs = uniforms['u_renderthreshold'];
+    uniforms['u_renderstyle'].value = params.useIsoSurface;
+    uniforms['u_renderthreshold'].value = params.threshold;
+    uniforms['u_cmdata'].value = cmtextures[params.colormap];
 
     const geometry = new THREE.BoxGeometry(sx, sy, sz);
     geometry.translate(sx / 2, sy / 2, sz / 2);
-    volumeMaterials = new THREE.ShaderMaterial({
+    volumeMaterial = new THREE.ShaderMaterial({
       uniforms,
       vertexShader: shader.vertexShader,
       fragmentShader: shader.fragmentShader,
       side: THREE.BackSide
     });
-    const mesh = new THREE.Mesh(geometry, volumeMaterials);
+    const mesh = new THREE.Mesh(geometry, volumeMaterial);
     mesh.position.set(-sx / 2, -sy / 2, -sz / 2);
 
     // === Create group hierarchy ===
@@ -175,12 +173,12 @@ function addVolume(volumePath, center, rotateGroup) {
     yawGroup.position.set(cx, cy, cz);
     yawGroup.lookAt(vrPosition); // Make it face the camera
 
-    // === Apply fixed organ-specific rotation to placingGroup ===
+    // === Apply fixed rotation to placingGroup ===
     placingGroup.rotation.copy(rotation);
 
     // Scale
-    const organScale = organParams.scale * SCALE_COEFF;
-    rotatingGroup.scale.set(organScale, organScale, organScale);
+    const volumeScale = params.scale * SCALE_COEFF;
+    rotatingGroup.scale.set(volumeScale, volumeScale, volumeScale);
   });
 }
 
@@ -250,7 +248,7 @@ function setupEnvironmentLighting() {
 // GUI
 // =======================================
 
-function setupOrganGUIs() {
+function setupGUIs() {
   const offset = 0.75;
   const guiDistance = 3.5;
   const guiScale = 6.0;
@@ -267,74 +265,74 @@ function setupOrganGUIs() {
     if (controller2) group.listenToXRControllerEvents(controller2);
   }
   
-  // const group = new InteractiveGroup();
-  // group.listenToPointerEvents(renderer, camera);
-  // scene.add(group);
 
   // Transforms panel
   const transformsGui = new GUI({ width: guiWidth });
   transformsGui.title(`Spatial Transforms`);
-  transformsGui.add(organParams, 'scale', 1, 3, 0.1).name('Scale').onChange((v) => {
+  transformsGui.add(params, 'scale', 1, 3, 0.1).name('Scale').onChange((v) => {
     rotatingGroup.scale.set(v*SCALE_COEFF, v*SCALE_COEFF, v*SCALE_COEFF);
   });
-  transformsGui.add(organParams, 'rotLR', -180, 180, 1).name('Rotate Left/Right').onChange((v) => {
+  transformsGui.add(params, 'rotLR', -180, 180, 1).name('Rotate Left/Right').onChange((v) => {
     rotatingGroup.rotation.y = v * Math.PI / 180;
   });
-  transformsGui.add(organParams, 'rotUD', -180, 180, 1).name('Rotate Up/Down').onChange((v) => {
+  transformsGui.add(params, 'rotUD', -180, 180, 1).name('Rotate Up/Down').onChange((v) => {
     rotatingGroup.rotation.x = v * Math.PI / 180;
   });
   transformsGui.domElement.style.visibility = 'hidden';
   
-  organTransformsGuiMesh = new HTMLMesh(transformsGui.domElement);
+  TransformsGuiMesh = new HTMLMesh(transformsGui.domElement);
   const position = new THREE.Vector3(0, guiHeight, 0);
   position.z -= guiDistance;
-  organTransformsGuiMesh.position.copy(position);
-  organTransformsGuiMesh.lookAt(vrPosition);
+  TransformsGuiMesh.position.copy(position);
+  TransformsGuiMesh.lookAt(vrPosition);
   const localX = new THREE.Vector3(1, 0, 0); // local x direction
-  const organTransformsOffset = localX.applyQuaternion(organTransformsGuiMesh.quaternion).multiplyScalar(offset);
-  organTransformsGuiMesh.position.add(organTransformsOffset);
-  organTransformsGuiMesh.scale.setScalar(guiScale);
+  const TransformsOffset = localX.applyQuaternion(TransformsGuiMesh.quaternion).multiplyScalar(offset);
+  TransformsGuiMesh.position.add(TransformsOffset);
+  TransformsGuiMesh.scale.setScalar(guiScale);
   
   // Data panel
   const dataGui = new GUI({ width: guiWidth });
   dataGui.title(`Volume Visualization`);
 
-  dataGui.add(organParams, 'useIsoSurface', 0, 1, 1)
+  dataGui.add(params, 'useIsoSurface', 0, 1, 1)
     .name('MIP <> Isosurface')
     .onChange((v) => {
-      if (volumeMaterials && volumeMaterials.uniforms?.u_renderstyle) {
-        volumeMaterials.uniforms['u_renderstyle'].value = v ? 1 : 0;
+      if (volumeMaterial && volumeMaterial.uniforms?.u_renderstyle) {
+        volumeMaterial.uniforms['u_renderstyle'].value = v ? 1 : 0;
       }
     });
-    dataGui.add(organParams, 'threshold', 0, 1, 0.01)
+    dataGui.add(params, 'threshold', 0, 1, 0.01)
     .name('Isosurf. Threshold')
     .onChange((value) => {
-      if (thresholdUniformRefs) thresholdUniformRefs.value = value;
+      if (uniforms['u_renderthreshold']) uniforms['u_renderthreshold'].value = value;
     });
-    dataGui.add(organParams, 'colormap', 1, 4, 1).name('Colormap').onChange((v) => {
-      if (volumeMaterials && volumeMaterials.uniforms?.u_cmdata) {
-        volumeMaterials.uniforms['u_cmdata'].value = cmtextures[v];
+    dataGui.add(params, 'colormap', 1, 4, 1).name('Colormap').onChange((v) => {
+      if (volumeMaterial && volumeMaterial.uniforms?.u_cmdata) {
+        volumeMaterial.uniforms['u_cmdata'].value = cmtextures[v];
       }
   });
   dataGui.domElement.style.visibility = 'hidden';
 
-  organDataGuiMesh = new HTMLMesh(dataGui.domElement);
+   DataGuiMesh = new HTMLMesh(dataGui.domElement);
   const position2 = new THREE.Vector3(0, guiHeight, 0);
   position2.z -= guiDistance;
-  organDataGuiMesh.position.copy(position2);
-  organDataGuiMesh.lookAt(vrPosition);
+   DataGuiMesh.position.copy(position2);
+   DataGuiMesh.lookAt(vrPosition);
   const localX2 = new THREE.Vector3(-1, 0, 0); // local x direction
-  const organDataOffset = localX2.applyQuaternion(organDataGuiMesh.quaternion).multiplyScalar(offset);
-  organDataGuiMesh.position.add(organDataOffset);
-  organDataGuiMesh.scale.setScalar(guiScale); 
+  const dataOffset = localX2.applyQuaternion(
+ DataGuiMesh.quaternion).multiplyScalar(offset);
+   DataGuiMesh.position.add(dataOffset);
+   DataGuiMesh.scale.setScalar(guiScale); 
 
   // Add to interactive group
-  group.add(organTransformsGuiMesh);
-  group.add(organDataGuiMesh);
+  group.add(TransformsGuiMesh);
+  group.add(
+ DataGuiMesh);
   
   if (HIDEGUI) {
-    organTransformsGuiMesh.visible = false;
-    organDataGuiMesh.visible = false;
+    TransformsGuiMesh.visible = false;
+    
+ DataGuiMesh.visible = false;
   }
 }
 
