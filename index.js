@@ -12,26 +12,25 @@ import { VolumeShader } from './shaders/VolumeShader.js';
 // PARAMETERS
 let VOLUME_PATH;
 VOLUME_PATH = './data/examples/worm.nrrd';
-VOLUME_PATH = './data/examples/stent.nrrd';
-// VOLUME_PATH = './data/examples/heart_256.nrrd';
-// VOLUME_PATH = './data/examples/eye_512.nrrd';
+// VOLUME_PATH = './data/examples/stent.nrrd';
+VOLUME_PATH = './data/examples/heart_256.nrrd';
+//  VOLUME_PATH = './data/examples/eye_512.nrrd';
 
-const ROTATIONSPEED = 0.00;
+const ROTATIONSPEED = 0.01; // Try: 0.001 for slow, 0.01 for fast
 const FOV = 80;
-const HIDEGUI = false;
 const SCALE_COEFF = 0.5;
 
 const vrPosition = new THREE.Vector3(0, 1.7, 0);
+const vrDirection = new THREE.Vector3(0, 0, -1);
 
 // GUI + data config
-const DISTANCE = 170;
-const isoThreshold = 0.;
+const isoThreshold = 0.2;
 const rotation = new THREE.Euler(90 * Math.PI / 180, 0 * Math.PI / 180, 0);
 
 
 let scene, camera, renderer;
 let rotatingGroup, group;
-let volumeCenter, volumeMaterial;
+let volumeMaterial;
 let TransformsGuiMesh, DataGuiMesh;
 let controller1, controller2;
 
@@ -62,12 +61,13 @@ animate();
 function init() {
   // Setup scene
   scene = new THREE.Scene();
-  initializeCenter(DISTANCE);
 
   // Setup camera
   camera = new THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, 0.1, 5000);
   camera.position.copy(vrPosition);
-  camera.lookAt(volumeCenter);
+  let lookAtPos = new THREE.Vector3();
+  lookAtPos.addVectors(vrPosition, vrDirection);
+  camera.lookAt(lookAtPos);
 
   // Setup light & environment
   setupEnvironmentLighting();
@@ -75,7 +75,7 @@ function init() {
   // Load volumetric data
   rotatingGroup = new THREE.Group(); // Add rotating group to enable transforms
   scene.add(rotatingGroup);
-  addVolume(VOLUME_PATH, volumeCenter, rotatingGroup);
+  addVolume(VOLUME_PATH, rotatingGroup);
 
   // Add auxiliary scene objects
   setupSceneObjects();
@@ -89,7 +89,7 @@ function init() {
 
   // Add credits
   setupCredits(renderer);
-  
+
   // On window resize
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -101,13 +101,13 @@ function init() {
 function animate() {
   renderer.setAnimationLoop(() => {
     // Rotate the volumes
-    rotatingGroup.rotation.x += ROTATIONSPEED;
+    rotatingGroup.rotation.y += ROTATIONSPEED;
 
     // Update the GUIs
     if (TransformsGuiMesh) TransformsGuiMesh.material.map.update();
     if (
-   DataGuiMesh) 
-   DataGuiMesh.material.map.update();
+      DataGuiMesh)
+      DataGuiMesh.material.map.update();
 
     renderer.render(scene, camera);
   });
@@ -118,17 +118,7 @@ function animate() {
 // Volume Loading & Material Setup
 // =======================================
 
-function initializeCenter(distance) {
-  const center = new THREE.Vector3(0, 1.7, 0);
-  center.z -= distance;
-  volumeCenter = center;
-}
-
-function addVolume(volumePath, center, rotateGroup) {
-  const threshold = isoThreshold;
-  params.threshold = threshold;
-  const [cx, cy, cz] = center;
-
+function addVolume(volumePath, rotateGroup) {
   new NRRDLoader().load(volumePath, (volume) => {
     const sx = volume.xLength;
     const sy = volume.yLength;
@@ -170,6 +160,9 @@ function addVolume(volumePath, center, rotateGroup) {
     placingGroup.add(mesh);
 
     // === Positioning ===
+    const maxLength = Math.max(sx, sy, sz);
+    const center = new THREE.Vector3(0, 1.7, -maxLength * 0.5);
+    const [cx, cy, cz] = center;
     yawGroup.position.set(cx, cy, cz);
     yawGroup.lookAt(vrPosition); // Make it face the camera
 
@@ -207,7 +200,7 @@ function addCylindricalFloor(scene, radius, height, radialSegments, gridLines) {
 
   // 2. Grid circle on top face (white edges)
   const num_circles = 5;
-  for (let i = 1; i < num_circles+1; i++) {
+  for (let i = 1; i < num_circles + 1; i++) {
     const circleGeometry = new THREE.CircleGeometry(i * radius / num_circles, radialSegments);
     circleGeometry.rotateX(-Math.PI / 2); // face up
     const circleEdges = new THREE.EdgesGeometry(circleGeometry);
@@ -264,13 +257,13 @@ function setupGUIs() {
     if (controller1) group.listenToXRControllerEvents(controller1);
     if (controller2) group.listenToXRControllerEvents(controller2);
   }
-  
+
 
   // Transforms panel
   const transformsGui = new GUI({ width: guiWidth });
   transformsGui.title(`Spatial Transforms`);
   transformsGui.add(params, 'scale', 1, 3, 0.1).name('Scale').onChange((v) => {
-    rotatingGroup.scale.set(v*SCALE_COEFF, v*SCALE_COEFF, v*SCALE_COEFF);
+    rotatingGroup.scale.set(v * SCALE_COEFF, v * SCALE_COEFF, v * SCALE_COEFF);
   });
   transformsGui.add(params, 'rotLR', -180, 180, 1).name('Rotate Left/Right').onChange((v) => {
     rotatingGroup.rotation.y = v * Math.PI / 180;
@@ -279,7 +272,7 @@ function setupGUIs() {
     rotatingGroup.rotation.x = v * Math.PI / 180;
   });
   transformsGui.domElement.style.visibility = 'hidden';
-  
+
   TransformsGuiMesh = new HTMLMesh(transformsGui.domElement);
   const position = new THREE.Vector3(0, guiHeight, 0);
   position.z -= guiDistance;
@@ -289,7 +282,7 @@ function setupGUIs() {
   const TransformsOffset = localX.applyQuaternion(TransformsGuiMesh.quaternion).multiplyScalar(offset);
   TransformsGuiMesh.position.add(TransformsOffset);
   TransformsGuiMesh.scale.setScalar(guiScale);
-  
+
   // Data panel
   const dataGui = new GUI({ width: guiWidth });
   dataGui.title(`Volume Visualization`);
@@ -301,39 +294,34 @@ function setupGUIs() {
         volumeMaterial.uniforms['u_renderstyle'].value = v ? 1 : 0;
       }
     });
-    dataGui.add(params, 'threshold', 0, 1, 0.01)
+  dataGui.add(params, 'threshold', 0, 1, 0.01)
     .name('Isosurf. Threshold')
     .onChange((value) => {
-      if (uniforms['u_renderthreshold']) uniforms['u_renderthreshold'].value = value;
-    });
-    dataGui.add(params, 'colormap', 1, 4, 1).name('Colormap').onChange((v) => {
-      if (volumeMaterial && volumeMaterial.uniforms?.u_cmdata) {
-        volumeMaterial.uniforms['u_cmdata'].value = cmtextures[v];
+      if (volumeMaterial && volumeMaterial.uniforms?.u_renderthreshold) {
+        volumeMaterial.uniforms['u_renderthreshold'].value = value;
       }
+    });
+  dataGui.add(params, 'colormap', 1, 4, 1).name('Colormap').onChange((v) => {
+    if (volumeMaterial && volumeMaterial.uniforms?.u_cmdata) {
+      volumeMaterial.uniforms['u_cmdata'].value = cmtextures[v];
+    }
   });
   dataGui.domElement.style.visibility = 'hidden';
 
-   DataGuiMesh = new HTMLMesh(dataGui.domElement);
+  DataGuiMesh = new HTMLMesh(dataGui.domElement);
   const position2 = new THREE.Vector3(0, guiHeight, 0);
   position2.z -= guiDistance;
-   DataGuiMesh.position.copy(position2);
-   DataGuiMesh.lookAt(vrPosition);
+  DataGuiMesh.position.copy(position2);
+  DataGuiMesh.lookAt(vrPosition);
   const localX2 = new THREE.Vector3(-1, 0, 0); // local x direction
   const dataOffset = localX2.applyQuaternion(
- DataGuiMesh.quaternion).multiplyScalar(offset);
-   DataGuiMesh.position.add(dataOffset);
-   DataGuiMesh.scale.setScalar(guiScale); 
+    DataGuiMesh.quaternion).multiplyScalar(offset);
+  DataGuiMesh.position.add(dataOffset);
+  DataGuiMesh.scale.setScalar(guiScale);
 
   // Add to interactive group
   group.add(TransformsGuiMesh);
-  group.add(
- DataGuiMesh);
-  
-  if (HIDEGUI) {
-    TransformsGuiMesh.visible = false;
-    
- DataGuiMesh.visible = false;
-  }
+  group.add(DataGuiMesh);
 }
 
 // =======================================
@@ -356,7 +344,7 @@ function setupXRButton() {
 
 function setupControllers() {
   const geometry = new THREE.BufferGeometry()
-    .setFromPoints([ new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-5) ]);
+    .setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -5)]);
 
   controller1 = renderer.xr.getController(0);
   controller1.add(new THREE.Line(geometry));
