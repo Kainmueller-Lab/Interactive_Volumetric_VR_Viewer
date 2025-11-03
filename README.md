@@ -16,26 +16,10 @@ git clone https://github.com/Kainmueller-Lab/Interactive_Volumetric_VR_Viewer.gi
 
 ---
 
-### Option A: Host as a GitHub Page
-Turn your repository into a live webpage so it runs directly in the browser and supports VR.
-Use this option if your **data is public**.
-
-1. Make it a **public GitHub repository**.  
-2. Push all project files (`index.html`, `viewer.js`, `data/...`) to the main branch.  
-3. Go to **Settings → Pages → Source → “Deploy from a branch” → main (root)**.  
-4. Your viewer will be available at the GitHub Pages URL shown there after a refresh.
-
----
-
-### Option B: Open Locally in Your Browser
+### Open Locally in Your Browser
 You can preview the viewer locally with a lightweight local server.
-Use this option for **private data**.
 
-#### Option 1: **Live Server (VS Code Extension)**
-Install the *Live Server* extension.  
-Right-click `index.html` → “Open with Live Server”.
-
-#### Option 2: **Python (already on most systems)**
+#### Option 1: **Python (already on most systems)**
 Run this in the project folder:
 ```
 python -m http.server 5500
@@ -43,20 +27,21 @@ python -m http.server 5500
 Then open:  
 [http://localhost:5500/](http://localhost:5500/)
 
+#### Option 2: **Live Server (VS Code Extension)**
+Install the *Live Server* extension.  
+Right-click `index.html` → “Open with Live Server”.
+
 ---
 
 ## 2️⃣ Customize Your Viewer
 
-### A. Load Your Own Volume
+### Load Your Own Volume
 
 1. Place your `.nrrd` file inside the `data/` folder.  
 2. Edit this line at the top of `viewer.js`:
    ```js
    const VOLUME_PATH = './data/your_volume.nrrd';
    ```
-> ⚠️ To view your own data online, your `.nrrd` file must be included in the **public repository**.  
-> Do not upload private or sensitive data unless you trust the hosting environment.
-
 Currently only **NRRD** format is supported.  
 If your data is in another format, convert it first.
 
@@ -93,12 +78,44 @@ Modify them directly to control camera behavior, rotation, field of view, and mo
 
 ## 3️⃣ Enter VR Mode
 
-You can explore your 3D volume in **Virtual Reality**.
+You can explore your 3D volume directly in **Virtual Reality**.  
+For WebXR to work, the page must be served over **HTTPS** — either through public hosting or a secure local tunnel.
 
-1. **Host the project online** (e.g., via GitHub Pages).  
-2. Open the hosted webpage using a **VR-capable browser** (e.g., smartphone, headset browser, or desktop VR setup).  
-3. Click the **“Enter VR”** button in the viewer.
-4. (Optional) If you have controllers, use them to adjust the sliders on the VR panel.
+---
+
+### 🅰️ Option A: Host the Project Online (GitHub Pages)
+
+Turn your repository into a live, browser-accessible webpage that supports WebXR and VR mode.
+
+1. Create a **public GitHub repository**.  
+2. Push all project files (`index.html`, `viewer.js`, `data/...`) to the `main` branch.  
+3. In your repo, go to **Settings → Pages → Source → “Deploy from a branch” → main (root)**.  
+4. After saving, GitHub will provide a public URL (e.g., `https://username.github.io/repo-name/`).
+
+Once the page is live, open it in any WebXR-compatible browser (desktop or VR device) and click **“Enter VR.”**
+
+> ⚠️ If you want to view your own `.nrrd` data online, it must be included in the **public repository**.  
+> Be careful when uploading **private, unpublished, or confidential datasets.**
+
+---
+
+### 🅱️ Option B: Use ngrok to Create a Secure Local Tunnel
+
+If you prefer to keep your project and data private but still need an HTTPS link for WebXR, use **ngrok**.
+
+1. Install ngrok from [https://ngrok.com](https://ngrok.com) (free signup required).  
+2. Run your local server (e.g., `python -m http.server 5500` or `npx http-server -p 5500`).  
+3. In another terminal, start an ngrok tunnel pointing to your local port:
+```
+ngrok http 5500
+```
+4. ngrok will display a forwarding HTTPS URL, for example:  
+`https://a1b2c3d4.ngrok.io`
+5. Open that HTTPS link in a **VR-capable browser** — on your computer, smartphone, or headset.
+6. Click **“Enter VR”** to switch to immersive mode.  
+7. (Optional) If you have VR controllers, you can interact with the viewer and adjust the parameters using the VR UI panel.
+
+> This method keeps your data local while still satisfying browser security requirements for WebXR (HTTPS context).
 
 ---
 
