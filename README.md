@@ -7,7 +7,7 @@ Open-source, lightweight, and works directly from your browser.
 
 ## 1️⃣ General Setup
 
-### A. Get the Code
+### Get the Code
 Clone this repository:
 
 ```
@@ -16,19 +16,20 @@ git clone https://github.com/Kainmueller-Lab/Interactive_Volumetric_VR_Viewer.gi
 
 ---
 
-### B. Optional: Host as a GitHub Page
-You can turn your repository into a live webpage so it runs directly in the browser and supports VR.
+### Option A: Host as a GitHub Page
+Turn your repository into a live webpage so it runs directly in the browser and supports VR.
+Use this option if your **data is public**.
 
-1. Create a **public GitHub repository**.  
+1. Make it a **public GitHub repository**.  
 2. Push all project files (`index.html`, `viewer.js`, `data/...`) to the main branch.  
 3. Go to **Settings → Pages → Source → “Deploy from a branch” → main (root)**.  
 4. Your viewer will be available at the GitHub Pages URL shown there after a refresh.
 
 ---
 
-### C. Open Locally in Your Browser
-
-You can preview the viewer locally with a lightweight local server — this avoids browser security restrictions on file loading.
+### Option B: Open Locally in Your Browser
+You can preview the viewer locally with a lightweight local server.
+Use this option for **private data**.
 
 #### Option 1: **Five Server (VS Code Extension)**
 You already use this — just click **“Go Live”** in VS Code.
