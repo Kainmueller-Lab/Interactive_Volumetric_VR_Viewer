@@ -8,27 +8,21 @@ Open-source, lightweight, and works directly from your browser — no installati
 ## 1️⃣ General Setup
 
 ### A. Get the Code
-Download or clone this repository:
+Clone this repository:
 
 ```
-your-project/
-├─ index.html
-├─ viewer.js
-└─ data/
-   └─ stent.nrrd   ← sample volume
+git clone https://github.com/Kainmueller-Lab/Interactive_Volumetric_VR_Viewer.git
 ```
 
 ---
 
 ### B. Optional: Host as a GitHub Page
-You can turn the repository into a live webpage so it runs directly in the browser and supports VR.
+You can turn your repository into a live webpage so it runs directly in the browser and supports VR.
 
 1. Create a **public GitHub repository**.  
 2. Push all project files (`index.html`, `viewer.js`, `data/...`) to the main branch.  
 3. Go to **Settings → Pages → Source → “Deploy from a branch” → main (root)**.  
-4. Your viewer will be available at the GitHub Pages URL shown there.
-
-This allows WebXR (VR) to run properly over HTTPS.
+4. Your viewer will be available at the GitHub Pages URL shown there after a refresh.
 
 ---
 
@@ -51,15 +45,6 @@ python -m http.server 5500
 Then open:  
 [http://localhost:5500/](http://localhost:5500/)
 
-#### Option 4: **Node.js**
-If you have Node installed:
-```
-npx http-server -p 5500
-```
-Then open the same URL.
-
-> ⚠️ Avoid opening `index.html` directly via `file://`. Browsers block loading local `.nrrd` files that way.
-
 ---
 
 ## 2️⃣ Customize Your Viewer
@@ -71,6 +56,8 @@ Then open the same URL.
    ```js
    const VOLUME_PATH = './data/your_volume.nrrd';
    ```
+> ⚠️ To view your own data online, your `.nrrd` file must be included in the **public repository**.  
+> Do not upload private or sensitive data unless you trust the hosting environment.
 
 Currently only **NRRD** format is supported.  
 If your data is in another format, convert it first.
@@ -95,45 +82,13 @@ You can use any of these methods:
 All adjustable parameters are grouped at the top of `viewer.js`.  
 Modify them directly to control camera behavior, rotation, field of view, and more.
 
-```js
-// ================================================================
-// CONFIGURATION PARAMETERS — Customize your VR Volume Viewer
-// ================================================================
-
-// Path to the volumetric dataset (NRRD)
-const VOLUME_PATH = './data/stent.nrrd';
-
-// Viewer rotation speed (Left–Right). 
-// Typical range: 0.002 (slow) – 0.01 (fast)
-const ROTATION_SPEED = 0.003;
-
-// Camera field of view in degrees
-const FOV = 80;
-
-// Initial isosurface threshold (0–1). 
-// Lower values show more detail; higher values show less.
-const ISOSURFACE_THRESHOLD = 0.06;
-
-// Camera orientation in degrees
-const TILT_UP_DOWN = 90;      // Tilt up/down
-const TILT_LEFT_RIGHT = 90;   // Tilt left/right
-const TILT_CLOCKWISE = 0;     // Rotate clockwise
-
-// Initial zoom (1.0 = default size)
-const ZOOM = 1.0;
-
-// ================================================================
-```
-
-**Parameter meanings:**
-
 | Parameter | Description | Typical Range |
 |------------|--------------|----------------|
 | `VOLUME_PATH` | Path to your `.nrrd` file | `"./data/yourfile.nrrd"` |
-| `ROTATION_SPEED` | Rotation sensitivity | 0.002 – 0.01 |
-| `FOV` | Camera field of view (angle) | 60 – 90 |
-| `ISOSURFACE_THRESHOLD` | Defines how much of the volume is visible | 0.02 – 0.2 |
-| `TILT_UP_DOWN`, `TILT_LEFT_RIGHT`, `TILT_CLOCKWISE` | Orientation of the initial view | 0–180° |
+| `ROTATION_SPEED` | Rotation speed | 0.001 – 0.01 |
+| `FOV` | Camera field of view (angle) | 60 – 100 |
+| `ISOSURFACE_THRESHOLD` | Defines how much of the volume is visible | 0.0 – 1.0 |
+| `TILT_UP_DOWN`, `TILT_LEFT_RIGHT`, `TILT_CLOCKWISE` | Orientation of the initial view in degrees |  |
 | `ZOOM` | Initial zoom level | 0.5 – 2.0 |
 
 ---
@@ -145,30 +100,17 @@ You can explore your 3D volume in **Virtual Reality**.
 1. **Host the project online** (e.g., via GitHub Pages).  
 2. Open the hosted webpage using a **VR-capable browser** (e.g., smartphone, headset browser, or desktop VR setup).  
 3. Click the **“Enter VR”** button in the viewer.
-
-> ⚠️ To view your own data online, your `.nrrd` file must be included in the **public repository**.  
-> Do not upload private or sensitive data unless you trust the hosting environment.
-
-**Browser Tips:**
-- Works best with **Chromium-based browsers** supporting WebXR.
-- On standalone headsets (Quest, Pico, etc.), use the built-in browser.
-- If you don’t see “Enter VR,” ensure the site uses HTTPS and your device supports WebXR.
-
----
-
-## ⚙️ Troubleshooting
-
-| Problem | Likely Cause | Fix |
-|----------|---------------|-----|
-| Nothing appears | Wrong `VOLUME_PATH` or fetch error | Check path and console |
-| CORS / fetch blocked | Opened via `file://` | Serve via local server |
-| “Enter VR” missing | Browser lacks WebXR or no HTTPS | Use secure hosting |
-| Viewer lagging | Volume too large | Downsample data or raise `ISOSURFACE_THRESHOLD` |
+4. (Optional) If you have controllers, use them to adjust the sliders on the VR panel.
 
 ---
 
 ## 📜 License and Attribution
 
-Free to use and modify.  
-If you share your project, credit this repository or include a LICENSE file.  
-Always cite original data sources if redistributing datasets.
+This project is released under the **MIT License** — completely free to use, modify, and distribute.  
+It builds upon the open-source **three.js** codebase and follows its permissive licensing model.  
+
+If you create derivative work or reuse parts of this repository, please:  
+- Retain the MIT license notice in your project.  
+- Acknowledge this repository and the three.js project in your documentation or credits.  
+- Always cite or credit original data sources when redistributing volumetric datasets.
+
