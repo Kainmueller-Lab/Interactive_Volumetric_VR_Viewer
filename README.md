@@ -1,4 +1,4 @@
-# Interactive Volumetric VR Viewer
+# 🥽 Interactive Volumetric VR Viewer
 
 A simple, browser-based viewer for **3D volumetric data** with built-in **VR support** through WebXR.  
 Open-source, lightweight, and works directly from your browser.
