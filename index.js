@@ -10,7 +10,7 @@ import { VolumeShader } from './shaders/VolumeShader.js';
 
 
 // =======================================
-const VOLUME_PATH = './data/examples/stent.nrrd';
+const VOLUME_PATH = './data/stent.nrrd';
 const ROTATIONSPEED = 0.003; // Left-Right rotation speed; Try: 0.002 for slow, 0.01 for fast
 const FOV = 80; // Angle of field of view
 
