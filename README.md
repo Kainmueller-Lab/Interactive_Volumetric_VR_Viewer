@@ -60,7 +60,7 @@ You can use any of these methods:
 
 ---
 
-### B. Adjust Parameters Without Coding
+### Adjust Parameters Without Coding
 
 All adjustable parameters are grouped at the top of `viewer.js`.  
 Modify them directly to control camera behavior, rotation, field of view, and more.
