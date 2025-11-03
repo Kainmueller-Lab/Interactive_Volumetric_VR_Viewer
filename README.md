@@ -31,9 +31,9 @@ Use this option if your **data is public**.
 You can preview the viewer locally with a lightweight local server.
 Use this option for **private data**.
 
-#### Option 1: **Five Server or Live Server (VS Code Extensions)**
-Install the *Five Server* or *Live Server* extension.  
-Right-click `index.html` → “Open with Five / Live Server”.
+#### Option 1: **Live Server (VS Code Extension)**
+Install the *Live Server* extension.  
+Right-click `index.html` → “Open with Live Server”.
 
 #### Option 2: **Python (already on most systems)**
 Run this in the project folder:
