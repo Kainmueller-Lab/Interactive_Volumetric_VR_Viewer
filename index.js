@@ -9,17 +9,41 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { VolumeShader } from './shaders/VolumeShader.js';
 
 
-// =======================================
-const VOLUME_PATH = './data/stent.nrrd';
-const ROTATIONSPEED = 0.003; // Left-Right rotation speed; Try: 0.002 for slow, 0.01 for fast
-const FOV = 80; // Angle of field of view
+// ================================================================
+// 🔧 CONFIGURATION PARAMETERS — Customize your VR Volume Viewer
+// ================================================================
+//
+// Adjust these constants to tune how your 3D volume is loaded,
+// displayed, and interacted with. All parameters can be modified
+// directly here before running the viewer.
+//
+// ---------------------------------------------------------------
 
-const ISOSURFACE_THRESHOLD = 0.06; // Initial isosurface threshold (0-1)
-const TILT_UP_DOWN = 90; // Up-Down tilt in degrees
-const TILT_LEFT_RIGHT = 90; // Left-Right tilt in degrees
-const TILT_CLOCKWISE = 0; // Clockwise tilt in degrees
-const ZOOM = 1.0; // Initial zoom (scale) of the volume
-// =======================================
+// Path to the volumetric dataset (NRRD format)
+const VOLUME_PATH = './data/stent.nrrd';
+
+// Viewer rotation speed (Left–Right). 
+// Typical range: 0.002 (slow) – 0.01 (fast)
+const ROTATION_SPEED = 0.003;
+
+// Camera field of view in degrees
+const FOV = 80;
+
+// Initial isosurface threshold (range: 0–1). 
+// Lower values show more volume, higher values show less.
+const ISOSURFACE_THRESHOLD = 0.06;
+
+// Camera orientation in degrees
+const TILT_UP_DOWN = 90;      // Tilt up/down
+const TILT_LEFT_RIGHT = 90;   // Tilt left/right
+const TILT_CLOCKWISE = 0;     // Rotate around viewing axis
+
+// Initial zoom level (1.0 = default size)
+const ZOOM = 1.0;
+
+// ================================================================
+// End of configuration section — modify above to customize viewer
+// ================================================================
 
 
 
@@ -103,7 +127,7 @@ function init() {
 function animate() {
   renderer.setAnimationLoop(() => {
     // Rotate the volumes
-    rotatingGroup.rotation.y += ROTATIONSPEED;
+    rotatingGroup.rotation.y += ROTATION_SPEED;
 
     // Update the GUIs
     if (TransformsGuiMesh) TransformsGuiMesh.material.map.update();
