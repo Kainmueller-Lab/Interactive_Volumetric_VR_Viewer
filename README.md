@@ -71,7 +71,7 @@ Modify them directly to control camera behavior, rotation, field of view, and mo
 | `ROTATION_SPEED` | Rotation speed | 0.001 – 0.01 |
 | `FOV` | Camera field of view (angle) | 60 – 100 |
 | `ISOSURFACE_THRESHOLD` | Defines how much of the volume is visible | 0.0 – 1.0 |
-| `TILT_UP_DOWN`, `TILT_LEFT_RIGHT`, `TILT_CLOCKWISE` | Orientation of the initial view in degrees |  |
+| `TILT_UP_DOWN`, `TILT_LEFT_RIGHT`, `TILT_CLOCKWISE` | Orientation of the initial view in degrees | 0 - 360° |
 | `ZOOM` | Initial zoom level | 0.5 – 2.0 |
 
 ---
